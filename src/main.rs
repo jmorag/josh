@@ -1,12 +1,17 @@
 // Josh - Joseph's shell :)
+use std::collections::VecDeque;
 use std::env;
+use std::fmt;
 use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::process;
 use std::process::Command;
+use std::borrow::Borrow;
 
 fn main() {
+    let mut history = History::new(100);
+
     loop {
         print!("$");
         io::stdout().flush().expect("Failed to write to stdout");
