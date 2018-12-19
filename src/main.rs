@@ -1,8 +1,8 @@
+#![feature(slice_patterns)]
+
 // Josh - Joseph's shell :)
-use std::borrow::Borrow;
 use std::collections::VecDeque;
 use std::env;
-use std::fmt;
 use std::io;
 use std::io::Write;
 use std::path::Path;
