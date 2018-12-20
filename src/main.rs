@@ -7,7 +7,7 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::process;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn main() {
     let mut history = History::new(100);
@@ -35,7 +35,11 @@ fn execute(history: &History) {
     let tokens: Vec<&str> =
         history.current().unwrap().split_whitespace().collect();
     match tokens.as_slice() {
-        [] => return,
+        [] => return, // handles emoty command gracefully
+
+        // Builtins: exit, cd and history
+        // !! and history -c covered by history.process
+        // since they mutate the history buffer
         ["exit"] => process::exit(0),
         ["cd"] => env::set_current_dir(Path::new("/users/josephmorag/"))
             .unwrap_or_else(|e| println!("{}", e)),
@@ -44,6 +48,7 @@ fn execute(history: &History) {
 
         ["history"] => history.display(None),
         ["history", n] => history.display(n.parse().ok()),
+
         [cmd, args..] => match Command::new(cmd).args(args).output() {
             Err(e) => println!("{}", e),
             Ok(out) => print!("{}", String::from_utf8_lossy(&out.stdout)),
