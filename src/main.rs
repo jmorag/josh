@@ -7,7 +7,7 @@ use std::io;
 use std::io::{Error, ErrorKind, Write};
 use std::path::Path;
 use std::process;
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Child, Command, Stdio};
 
 fn main() {
     let mut history = History::new(100);
@@ -85,16 +85,7 @@ fn execute_one(
 
         ["!!"] => {
             history.pop_cmd();
-            let last_command = history
-                .buffer
-                .back()
-                .ok_or_else({||
-                    Error::new(
-                        ErrorKind::NotFound,
-                        "Could not find matching event",
-                    )
-                })?
-                .clone();
+            let last_command = history.last()?;
             let last_child = execute_all(history, &last_command)?;
             execute_one(history, last_child, "cat")
         }
@@ -102,18 +93,7 @@ fn execute_one(
         [cmd] if cmd.starts_with("!") => {
             history.pop_cmd();
             let needle = cmd.trim_start_matches("!");
-            let last_command = history
-                .buffer
-                .iter()
-                .rev()
-                .find(|haystack| haystack.contains(needle))
-                .ok_or_else({||
-                    Error::new(
-                        ErrorKind::NotFound,
-                        "Could not find matching event",
-                    )
-                })?
-                .clone();
+            let last_command = history.find(needle)?;
             let last_child = execute_all(history, &last_command)?;
             execute_one(history, last_child, "cat")
         }
@@ -170,9 +150,29 @@ impl History {
         self.count += 1;
     }
 
+    fn find(&self, cmd: &str) -> Result<String, Error> {
+        let needle = cmd.trim_start_matches("!");
+        self.buffer
+            .iter()
+            .rev()
+            .find(|haystack| haystack.contains(needle))
+            .ok_or_else(|| {
+                Error::new(ErrorKind::NotFound, "Could not find matching event")
+            })
+            .map(|s| s.clone())
+    }
+
+    fn last(&self) -> Result<String, Error> {
+        self.buffer
+            .back()
+            .ok_or_else(|| {
+                Error::new(ErrorKind::NotFound, "Could not find matching event")
+            })
+            .map(|s| s.clone())
+    }
+
     fn pop_cmd(&mut self) {
         self.buffer.pop_back();
         self.count -= 1;
     }
-    
 }
