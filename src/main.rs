@@ -21,14 +21,17 @@ fn main() {
             .read_line(&mut line)
             .expect("Failed to read from stdin");
 
-        match execute_all(&mut history, &line) {
+        let child = execute_all(&mut history, &line);
+
+        match child.and_then(|c| c.wait_with_output()) {
             Err(e) => println!("{}", e),
             Ok(out) => print!("{}", String::from_utf8_lossy(&out.stdout)),
         }
     }
 }
 
-fn execute_all(hist: &mut History, line: &str) -> Result<Output, Error> {
+fn execute_all(hist: &mut History, line: &str) -> Result<Child, Error> {
+    hist.push_cmd(line);
     let cmds = line.split("|");
 
     // Set up dummy last child
@@ -37,7 +40,7 @@ fn execute_all(hist: &mut History, line: &str) -> Result<Output, Error> {
     for cmd in cmds {
         last_child = execute_one(hist, last_child, cmd)?;
     }
-    last_child.wait_with_output()
+    Ok(last_child)
 }
 
 fn execute_one(
@@ -48,7 +51,10 @@ fn execute_one(
     let tokens: Vec<&str> = cmd.split_whitespace().collect();
 
     match tokens.as_slice() {
-        [] => Command::new("true").spawn(), // handles emoty command gracefully
+        [] => {
+            history.pop_cmd();
+            Command::new("true").spawn()
+        } // handles empty command gracefully
 
         // Builtins: exit, cd and history
         ["exit"] => {
@@ -64,8 +70,54 @@ fn execute_one(
             Command::new("true").spawn()
         }
 
-        // ["history"] => history.display(None),
-        // ["history", n] => history.display(n.parse().ok()),
+        ["history"] => Command::new("echo")
+            .arg(&history.display(None))
+            .stdout(Stdio::piped())
+            .spawn(),
+        ["history", "-c"] => {
+            history.buffer.clear();
+            Command::new("true").spawn()
+        }
+        ["history", n] => Command::new("echo")
+            .arg(&history.display(n.parse().ok()))
+            .stdout(Stdio::piped())
+            .spawn(),
+
+        ["!!"] => {
+            history.pop_cmd();
+            let last_command = history
+                .buffer
+                .back()
+                .ok_or_else({||
+                    Error::new(
+                        ErrorKind::NotFound,
+                        "Could not find matching event",
+                    )
+                })?
+                .clone();
+            let last_child = execute_all(history, &last_command)?;
+            execute_one(history, last_child, "cat")
+        }
+
+        [cmd] if cmd.starts_with("!") => {
+            history.pop_cmd();
+            let needle = cmd.trim_start_matches("!");
+            let last_command = history
+                .buffer
+                .iter()
+                .rev()
+                .find(|haystack| haystack.contains(needle))
+                .ok_or_else({||
+                    Error::new(
+                        ErrorKind::NotFound,
+                        "Could not find matching event",
+                    )
+                })?
+                .clone();
+            let last_child = execute_all(history, &last_command)?;
+            execute_one(history, last_child, "cat")
+        }
+
         [cmd, args..] => {
             let pipe = input.stdout.expect("Coudn't read from stdout");
             Command::new(cmd)
@@ -90,62 +142,37 @@ impl History {
         }
     }
 
-    // fn display(&self, nentries: Option<usize>) -> Result<Output, Error> {
-    //     let n = nentries.unwrap_or(self.buffer.len());
-    //     for i in 0..n {
-    //         match self.buffer.get(i) {
-    //             Some(entry) => println!("{:<4} {}", i + self.count - n, entry),
-    //             None => break,
-    //         }
-    //     }
-    // }
+    fn display(&self, nentries: Option<usize>) -> String {
+        let n = nentries.unwrap_or(self.buffer.len());
+        let mut out = String::new();
 
-    // /// Handles all possible mutation of the history buffer
-    // /// Returns a bool that signals if it is ok to continue executing a command
-    // fn process(&mut self, command: String) -> bool {
-    //     let tokens: Vec<&str> = command.split_whitespace().collect();
-
-    //     if self.buffer.len() == 100 {
-    //         self.buffer.pop_front();
-    //     }
-
-    //     let next_entry: Result<String, String> = match tokens.as_slice() {
-    //         ["!!"] => self
-    //             .buffer
-    //             .back()
-    //             .ok_or("Most recent command does not exist".to_string())
-    //             .map(|s| s.to_string()),
-    //         [cmd] if cmd.starts_with("!") => {
-    //             let needle = cmd.trim_start_matches("!");
-    //             self.buffer
-    //                 .iter()
-    //                 .rev()
-    //                 .find(|haystack| haystack.contains(needle))
-    //                 .ok_or(format!("{}: event not found", needle))
-    //                 .map(|s| s.to_string())
-    //         }
-
-    //         toks => Ok(toks.join(" ")),
-    //     };
-
-    //     if tokens.as_slice() == ["history", "-c"] {
-    //         self.buffer.clear();
-    //     }
-
-    //     match next_entry {
-    //         Ok(c) => {
-    //             self.buffer.push_back(c);
-    //             self.count += 1;
-    //             true
-    //         }
-    //         Err(e) => {
-    //             println!("{}", e);
-    //             false
-    //         }
-    //     }
-    // }
-
-    fn current(&self) -> Option<&str> {
-        self.buffer.back().map(|cmd| cmd.as_ref())
+        for i in 0..n {
+            match self.buffer.get(i) {
+                Some(entry) => out.push_str(&format!(
+                    "{:<4} {}",
+                    i + self.count - n,
+                    entry
+                )),
+                None => break,
+            }
+        }
+        let len = out.len();
+        let _ = out.split_off(len - 1); // trim off extra newline
+        out
     }
+
+    fn push_cmd(&mut self, cmd: &str) {
+        if self.buffer.len() == 100 {
+            self.buffer.pop_front();
+        }
+
+        self.buffer.push_back(cmd.to_string());
+        self.count += 1;
+    }
+
+    fn pop_cmd(&mut self) {
+        self.buffer.pop_back();
+        self.count -= 1;
+    }
+    
 }
