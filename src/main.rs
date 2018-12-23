@@ -31,14 +31,33 @@ fn main() {
 }
 
 fn execute_all(hist: &mut History, line: &str) -> Result<Child, Error> {
-    hist.push_cmd(line);
     let cmds = line.split("|");
+    let new_cmds_result: Result<Vec<String>, Error> = cmds
+        .map(|cmd| {
+            let tokens: Vec<&str> = cmd.split_whitespace().collect();
+            let new_cmd: Result<String, Error> = match tokens.as_slice() {
+                ["!!"] => hist.last(),
+                [cmd] if cmd.starts_with("!") => {
+                    hist.find(cmd.trim_start_matches("!"))
+                }
 
+                toks => Ok(toks.join(" ")),
+            };
+            new_cmd
+        })
+        .collect();
+
+    let new_line = new_cmds_result?.as_slice().join(" | ");
+    if !new_line.is_empty() {
+        hist.push_cmd(&new_line);
+    }
+
+    let new_cmds = new_line.split("|");
     // Set up dummy last child
     let mut last_child = Command::new("true").stdout(Stdio::piped()).spawn()?;
 
-    for cmd in cmds {
-        last_child = execute_one(hist, last_child, cmd)?;
+    for cmd in new_cmds {
+        last_child = execute_one(hist, last_child, &cmd)?;
     }
     Ok(last_child)
 }
@@ -51,16 +70,11 @@ fn execute_one(
     let tokens: Vec<&str> = cmd.split_whitespace().collect();
 
     match tokens.as_slice() {
-        [] => {
-            history.pop_cmd();
-            Command::new("true").spawn()
-        } // handles empty command gracefully
+        [] => Command::new("true").spawn(), // handles empty command gracefully
 
         // Builtins: exit, cd and history
-        ["exit"] => {
-            process::exit(0);
-            Command::new("true").spawn() // unreachable but satisfies type checker
-        }
+        ["exit"] => process::exit(0),
+
         ["cd"] => {
             env::set_current_dir(Path::new("/users/josephmorag/"))?;
             Command::new("true").spawn()
@@ -75,28 +89,13 @@ fn execute_one(
             .stdout(Stdio::piped())
             .spawn(),
         ["history", "-c"] => {
-            history.buffer.clear();
+            history.clear();
             Command::new("true").spawn()
         }
         ["history", n] => Command::new("echo")
             .arg(&history.display(n.parse().ok()))
             .stdout(Stdio::piped())
             .spawn(),
-
-        ["!!"] => {
-            history.pop_cmd();
-            let last_command = history.last()?;
-            let last_child = execute_all(history, &last_command)?;
-            execute_one(history, last_child, "cat")
-        }
-
-        [cmd] if cmd.starts_with("!") => {
-            history.pop_cmd();
-            let needle = cmd.trim_start_matches("!");
-            let last_command = history.find(needle)?;
-            let last_child = execute_all(history, &last_command)?;
-            execute_one(history, last_child, "cat")
-        }
 
         [cmd, args..] => {
             let pipe = input.stdout.expect("Coudn't read from stdout");
@@ -129,7 +128,7 @@ impl History {
         for i in 0..n {
             match self.buffer.get(i) {
                 Some(entry) => out.push_str(&format!(
-                    "{:<4} {}",
+                    "{:<4} {}\n",
                     i + self.count - n,
                     entry
                 )),
@@ -137,7 +136,7 @@ impl History {
             }
         }
         let len = out.len();
-        let _ = out.split_off(len - 1); // trim off extra newline
+        let _ = out.split_off(len - 1); // trim off extra newline at end
         out
     }
 
@@ -171,8 +170,7 @@ impl History {
             .map(|s| s.clone())
     }
 
-    fn pop_cmd(&mut self) {
-        self.buffer.pop_back();
-        self.count -= 1;
+    fn clear(&mut self) {
+        self.buffer.clear()
     }
 }
