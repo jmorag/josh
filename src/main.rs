@@ -10,7 +10,7 @@ use std::process;
 use std::process::{Child, Command, Stdio};
 
 fn main() {
-    let mut history = History::new(100);
+    let mut history = History::new();
 
     loop {
         print!("$");
@@ -114,9 +114,9 @@ struct History {
 }
 
 impl History {
-    fn new(max_capacity: usize) -> History {
+    fn new() -> History {
         History {
-            buffer: VecDeque::with_capacity(max_capacity),
+            buffer: VecDeque::with_capacity(100),
             count: 0,
         }
     }
