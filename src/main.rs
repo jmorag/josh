@@ -1,16 +1,15 @@
 #![feature(slice_patterns)]
 
 // Josh - Joseph's shell :)
-use std::collections::VecDeque;
 use std::env;
 use std::io;
-use std::io::{Error, ErrorKind, Write};
+use std::io::{Error, ErrorKind, Result, Write};
 use std::path::Path;
 use std::process;
 use std::process::{Child, Command, Stdio};
 
 fn main() {
-    let mut history = History::new();
+    let mut hist = History::new();
 
     loop {
         print!("$");
@@ -21,7 +20,7 @@ fn main() {
             .read_line(&mut line)
             .expect("Failed to read from stdin");
 
-        let child = execute_all(&mut history, &line);
+        let child = execute_all(&mut hist, &line);
 
         match child.and_then(|c| c.wait_with_output()) {
             Err(e) => println!("{}", e),
@@ -30,12 +29,13 @@ fn main() {
     }
 }
 
-fn execute_all(hist: &mut History, line: &str) -> Result<Child, Error> {
+// Result is the io version which stands for Result<_. Error>
+fn execute_all(hist: &mut History, line: &str) -> Result<Child> {
     let cmds = line.split("|");
-    let new_cmds_result: Result<Vec<String>, Error> = cmds
+    let new_cmds_result: Result<Vec<String>> = cmds
         .map(|cmd| {
             let tokens: Vec<&str> = cmd.split_whitespace().collect();
-            let new_cmd: Result<String, Error> = match tokens.as_slice() {
+            let new_cmd: Result<String> = match tokens.as_slice() {
                 ["!!"] => hist.last(),
                 [cmd] if cmd.starts_with("!") => {
                     hist.find(cmd.trim_start_matches("!"))
@@ -62,11 +62,7 @@ fn execute_all(hist: &mut History, line: &str) -> Result<Child, Error> {
     Ok(last_child)
 }
 
-fn execute_one(
-    history: &mut History,
-    input: Child,
-    cmd: &str,
-) -> Result<Child, Error> {
+fn execute_one(hist: &mut History, input: Child, cmd: &str) -> Result<Child> {
     let tokens: Vec<&str> = cmd.split_whitespace().collect();
 
     match tokens.as_slice() {
@@ -85,15 +81,15 @@ fn execute_one(
         }
 
         ["history"] => Command::new("echo")
-            .arg(&history.display(None))
+            .arg(&hist.display(None))
             .stdout(Stdio::piped())
             .spawn(),
         ["history", "-c"] => {
-            history.clear();
+            hist.clear();
             Command::new("true").spawn()
         }
         ["history", n] => Command::new("echo")
-            .arg(&history.display(n.parse().ok()))
+            .arg(&hist.display(n.parse().ok()))
             .stdout(Stdio::piped())
             .spawn(),
 
