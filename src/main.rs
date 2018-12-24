@@ -145,7 +145,10 @@ impl History {
             .rev()
             .find(|haystack| haystack.contains(needle))
             .ok_or_else(|| {
-                Error::new(ErrorKind::NotFound, "Could not find matching event")
+                Error::new(
+                    ErrorKind::NotFound,
+                    format!("{}: Could not find matching event ", needle),
+                )
             })
             .map(|s| s.clone())
     }
