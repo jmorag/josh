@@ -26,6 +26,7 @@ fn main() {
             Err(e) => println!("{}", e),
             Ok(out) => print!("{}", String::from_utf8_lossy(&out.stdout)),
         }
+        io::stdout().flush().expect("Failed to write to stdout");
     }
 }
 
