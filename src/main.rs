@@ -131,10 +131,10 @@ impl History {
         };
         let mut out = String::new();
 
-        for i in 0..n {
+        for i in self.length - n..self.length {
             let to_add = format!(
                 "{} {}\n",
-                self.count - n + i,
+                self.count - self.length + i,
                 &self.buffer[(self.start + i) % 100]
             );
             out.push_str(&to_add);
