@@ -108,32 +108,39 @@ fn execute_one(
     }
 }
 
+#[derive(Debug)]
 struct History {
-    buffer: VecDeque<String>,
+    buffer: Vec<String>,
     count: usize,
+    start: usize,
+    length: usize,
 }
 
 impl History {
     fn new() -> History {
         History {
-            buffer: VecDeque::with_capacity(100),
+            buffer: vec![String::new(); 100],
             count: 0,
+            start: 0,
+            length: 0,
         }
     }
 
     fn display(&self, nentries: Option<usize>) -> String {
-        let n = nentries.unwrap_or(self.buffer.len());
+        let n = match nentries {
+            None => self.length,
+            Some(n) if n > self.length => self.length,
+            Some(n) => n,
+        };
         let mut out = String::new();
 
         for i in 0..n {
-            match self.buffer.get(i) {
-                Some(entry) => out.push_str(&format!(
-                    "{:<4} {}\n",
-                    i + self.count - n,
-                    entry
-                )),
-                None => break,
-            }
+            let to_add = format!(
+                "{} {}\n",
+                self.count - n + i,
+                &self.buffer[(self.start + i) % 100]
+            );
+            out.push_str(&to_add);
         }
         let len = out.len();
         let _ = out.split_off(len - 1); // trim off extra newline at end
@@ -141,15 +148,16 @@ impl History {
     }
 
     fn push_cmd(&mut self, cmd: &str) {
-        if self.buffer.len() == 100 {
-            self.buffer.pop_front();
-        }
-
-        self.buffer.push_back(cmd.to_string());
+        self.buffer[(self.start + self.length) % 100] = cmd.to_string();
         self.count += 1;
+        if self.length < 100 {
+            self.length += 1;
+        } else {
+            self.start += 1;
+        }
     }
 
-    fn find(&self, cmd: &str) -> Result<String, Error> {
+    fn find(&self, cmd: &str) -> Result<String> {
         let needle = cmd.trim_start_matches("!");
         self.buffer
             .iter()
@@ -161,16 +169,16 @@ impl History {
             .map(|s| s.clone())
     }
 
-    fn last(&self) -> Result<String, Error> {
-        self.buffer
-            .back()
-            .ok_or_else(|| {
-                Error::new(ErrorKind::NotFound, "Could not find matching event")
-            })
-            .map(|s| s.clone())
+    fn last(&self) -> Result<String> {
+        if self.length == 0 {
+            Err(Error::new(ErrorKind::NotFound, "History empty"))
+        } else {
+            Ok(self.buffer[(self.start + self.length - 1) % 100].clone())
+        }
     }
 
     fn clear(&mut self) {
-        self.buffer.clear()
+        self.start += self.length;
+        self.length = 0;
     }
 }
