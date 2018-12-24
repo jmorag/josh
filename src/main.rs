@@ -32,26 +32,7 @@ fn main() {
 
 // Result is the io version which stands for Result<_. Error>
 fn execute_all(hist: &mut History, line: &str) -> Result<Child> {
-    let cmds = line.split("|");
-    let new_cmds_result: Result<Vec<String>> = cmds
-        .map(|cmd| {
-            let tokens: Vec<&str> = cmd.split_whitespace().collect();
-            let new_cmd: Result<String> = match tokens.as_slice() {
-                ["!!"] => hist.last(),
-                [cmd] if cmd.starts_with("!") => {
-                    hist.find(cmd.trim_start_matches("!"))
-                }
-
-                toks => Ok(toks.join(" ")),
-            };
-            new_cmd
-        })
-        .collect();
-
-    let new_line = new_cmds_result?.as_slice().join(" | ");
-    if !new_line.is_empty() {
-        hist.push_cmd(&new_line);
-    }
+    let new_line = hist.process(line)?;
 
     let new_cmds = new_line.split("|");
     // Set up dummy last child
@@ -181,5 +162,30 @@ impl History {
     fn clear(&mut self) {
         self.start += self.length;
         self.length = 0;
+    }
+
+    fn process(&mut self, line: &str) -> Result<String> {
+        let cmds = line.split("|");
+        let new_cmds_result: Result<Vec<String>> = cmds
+            .map(|cmd| {
+                let tokens: Vec<&str> = cmd.split_whitespace().collect();
+                let new_cmd: Result<String> = match tokens.as_slice() {
+                    ["!!"] => self.last(),
+                    [cmd] if cmd.starts_with("!") => {
+                        self.find(cmd.trim_start_matches("!"))
+                    }
+
+                    toks => Ok(toks.join(" ")),
+                };
+                new_cmd
+            })
+            .collect();
+
+        let new_line = new_cmds_result?.as_slice().join(" | ");
+        if !new_line.is_empty() {
+            self.push_cmd(&new_line)
+        };
+
+        Ok(new_line)
     }
 }
