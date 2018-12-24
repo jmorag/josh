@@ -9,7 +9,7 @@ use std::process;
 use std::process::{Child, Command, Stdio};
 
 fn main() {
-    let mut hist = History::new();
+    let mut hist = History::new(100);
 
     loop {
         print!("$");
@@ -111,15 +111,17 @@ struct History {
     count: usize,
     start: usize,
     length: usize,
+    max_size: usize,
 }
 
 impl History {
-    fn new() -> History {
+    fn new(size: usize) -> History {
         History {
-            buffer: vec![String::new(); 100],
+            buffer: vec![String::new(); size],
             count: 0,
             start: 0,
             length: 0,
+            max_size: size,
         }
     }
 
@@ -135,7 +137,7 @@ impl History {
             let to_add = format!(
                 "{} {}\n",
                 self.count - self.length + i,
-                &self.buffer[(self.start + i) % 100]
+                &self.buffer[(self.start + i) % self.max_size]
             );
             out.push_str(&to_add);
         }
@@ -145,9 +147,10 @@ impl History {
     }
 
     fn push_cmd(&mut self, cmd: &str) {
-        self.buffer[(self.start + self.length) % 100] = cmd.to_string();
+        self.buffer[(self.start + self.length) % self.max_size] =
+            cmd.to_string();
         self.count += 1;
-        if self.length < 100 {
+        if self.length < self.max_size {
             self.length += 1;
         } else {
             self.start += 1;
@@ -170,7 +173,8 @@ impl History {
         if self.length == 0 {
             Err(Error::new(ErrorKind::NotFound, "History empty"))
         } else {
-            Ok(self.buffer[(self.start + self.length - 1) % 100].clone())
+            Ok(self.buffer[(self.start + self.length - 1) % self.max_size]
+                .clone())
         }
     }
 
