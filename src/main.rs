@@ -34,7 +34,7 @@ fn main() {
 fn execute_all(hist: &mut History, line: &str) -> Result<Child> {
     let new_line = hist.process(line)?;
 
-    let new_cmds = new_line.split("|");
+    let new_cmds = new_line.split('|');
     // Set up dummy last child
     let mut last_child = Command::new("true").stdout(Stdio::piped()).spawn()?;
 
@@ -168,13 +168,13 @@ impl History {
     }
 
     fn process(&mut self, line: &str) -> Result<String> {
-        let cmds = line.split("|");
+        let cmds = line.split('|');
         let new_cmds_result: Result<Vec<String>> = cmds
             .map(|cmd| {
                 let tokens: Vec<&str> = cmd.split_whitespace().collect();
                 let new_cmd: Result<String> = match tokens.as_slice() {
                     ["!!"] => self.last(),
-                    [cmd] if cmd.starts_with("!") => {
+                    [cmd] if cmd.starts_with('!') => {
                         self.find(cmd.trim_start_matches("!"))
                     }
 
